@@ -6,22 +6,24 @@ const s3 = new AWS.S3({"api-version": "2006-03-01"});
 const async = require('async');
 
 exports.handler = (event, context, callback) => {
-/*
-    let event = {
+
+/*    let event = {
         company: "kvitanco",
         name: "テスト太郎",
         kingaku: 52000
     }
 */
     async.waterfall([
-        function createPDFDoc(){
+        function createPDFDoc(callback){
 
             console.log(JSON.stringify(event));
             //Create a document
             doc = new PDFDocument
-            let filename = 'images/invoice.pdf';
+            let filename = Date.now().toString() + '_' + (Math.random(5) * 10).toString() + '.pdf';
             console.log(filename);
-            doc.pipe(fs.createWriteStream(filename))
+            //let fileDir = filename;
+            let fileDir = '/tmp/' + filename;
+            doc.pipe(fs.createWriteStream(fileDir))
             
             doc.fontSize(30)
             
@@ -115,20 +117,24 @@ exports.handler = (event, context, callback) => {
             //Finalize PDF file
             doc.end();
         
-            return (doc,filename);
+            callback(null,doc,filename, fileDir);
         },
-        function uploadPDF(generated_pdf, filename){
-            var params = {
-                Body: generated_pdf, 
-                Bucket: "kvitanco.invoice", 
-                Key: filename, 
-                ServerSideEncryption: "AES256", 
-                StorageClass: "STANDARD_IA"
-            };
-            s3.putObject(params, function(err, data) {
-                if (err) {console.log(err, err.stack); throw err;}// an error occurred
-                else     {console.log(data); return params;   }        // successful response
-            });
+        function uploadPDF(generated_pdf, filename, fileDir, callback){
+            
+            fs.readFileSync(fileDir,{}, function(err, data){
+                var params = {
+                    Body: data, 
+                    Bucket: "kvitanco.invoice", 
+                    Key: filename, 
+                    ServerSideEncryption: "AES256", 
+                    StorageClass: "STANDARD_IA"
+                };
+                console.log(params);
+                s3.putObject(params, function(err, data) {
+                    if (err) {console.log(err, err.stack); throw err;}// an error occurred
+                    else     {console.log(data); return params;   }        // successful response
+                });
+            })
         }
         //最後の通知の部分はs3のアップロードをトリガーにして実行するようにする
     ]);
