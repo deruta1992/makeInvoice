@@ -4,12 +4,22 @@ const AWS = require('aws-sdk');
 const s3 = new AWS.S3({"api-version": "2006-03-01"});
 
 const async = require('async');
+
 exports.handler = (event, context, callback) => {
+/*
+    let event = {
+        company: "kvitanco",
+        name: "テスト太郎",
+        kingaku: 52000
+    }
+*/
     async.waterfall([
-        function createPDFDoc(event){
+        function createPDFDoc(){
+
+            console.log(JSON.stringify(event));
             //Create a document
             doc = new PDFDocument
-            let filename = '領収証' + Math.random(5) + '.pdf';
+            let filename = 'images/invoice.pdf';
             console.log(filename);
             doc.pipe(fs.createWriteStream(filename))
             
@@ -27,6 +37,12 @@ exports.handler = (event, context, callback) => {
         
             let company = event.company;
             let atena = event.name;
+            let from = {
+                company: event.fromCompany,
+                address: event.fromAddress,
+                tel: event.fromPhone
+            }
+            console.log(company)
             let border_length = company.length * 20;
             if(border_length < atena.length * 20){
                 border_length = atena.length * 20;
@@ -38,15 +54,15 @@ exports.handler = (event, context, callback) => {
             .lineTo(50 + border_length, 80)
         
             doc.fontSize(10)
-            doc.text('Kvitanco', 50, 100, {align: "right"})
-            doc.text('東京都品川区北品川1-9-7', 50, 120, {align: "right"})
+            doc.text(from.company, 50, 100, {align: "right"})
+            doc.text(from.address, 50, 120, {align: "right"})
             doc.image('./images/clickstamper_R.png', 490, 110,  {width: 50, align: "right"})
             doc.rect(60,167,250,20)
             .lineWidth(20)
             .stroke('#b4b4b4')
             
             doc.fontSize(10)
-            .text('下記の通りご請求申し上げます', 50, 140)
+            .text('下記の通り領収しました', 50, 140)
             
             doc.fontSize(15)
             
