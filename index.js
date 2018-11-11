@@ -2,19 +2,72 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const AWS = require('aws-sdk');
 const s3 = new AWS.S3({"api-version": "2006-03-01"});
+const sns = new AWS.SNS({
+    apiVersion: '2010-03-31',
+    region: 'ap-northeast-1'
+});
+const dynamodb = new AWS.DynamoDB({apiVersion: '2012-08-10'});
 
 const async = require('async');
 
 exports.handler = (event, context, callback) => {
-
-/*    let event = {
-        company: "kvitanco",
-        name: "テスト太郎",
-        kingaku: 52000
+    //
+    function snssend(filename, recordkey, phone){
+        var params_sns = {
+            Message: '領収証の発行準備が整いました。' + "https://invoice.kvitanco.biz/?invoiceid=" + recordkey, /* required */
+            PhoneNumber: '+81' + parseInt(phone).toString(),
+            Subject: '領収証発行サービスkvitancoからのお知らせ'
+            };
+            
+        sns.publish(params_sns, function(err, data){
+            if(err){ throw err; }
+            console.log(data);
+            var param1 = {
+                ExpressionAttributeNames: {
+                "#Y": "smsStatus"
+                }, 
+                ExpressionAttributeValues: {
+                ":y": {
+                    S: filename
+                }
+                }, 
+                Key: { 
+                "id": {
+                    S: recordkey
+                }
+                }, 
+                TableName: "InvoiceData-gfglar3thfeapcqr4ytskpf23a", 
+                UpdateExpression: "SET #Y = :y"
+                };
+            dynamodb.updateItem(param1, function(err, data) {
+                if (err) console.log(err, err.stack); // an error occurred
+                else     console.log(data);  
+                callback(data);
+            })
+        })
     }
-*/
-    async.waterfall([
-        function createPDFDoc(callback){
+
+    function uploadPDF(filename, fileDir){
+                    
+        fs.readFileSync(fileDir,{}, function(err, data){
+            var params = {
+                Body: data, 
+                Bucket: "kvitanco.invoice", 
+                Key: filename, 
+                ServerSideEncryption: "AES256", 
+                StorageClass: "STANDARD_IA"
+            };
+            console.log(params);
+            s3.putObject(params, function(err, data) {
+                if (err) {console.log(err, err.stack); throw err;}// an error occurred
+                else     {
+                    console.log(data);
+                    snssend(filename, record.dynamodb.Keys.id, record.dynamodb.NewImage.phone);
+                }        // successful response
+            });
+        })
+    }
+        function createPDFDoc(event, record){
 
             console.log(JSON.stringify(event));
             //Create a document
@@ -37,14 +90,29 @@ exports.handler = (event, context, callback) => {
             doc.fontSize(15)
             doc.fillColor("black")
         
-            let company = event.company;
-            let atena = event.name;
+            let company = record.dynamodb.NewImage.company;
+            let atena = record.dynamodb.NewImage.name;
+            //fromCompany for debug
+            let fromCompany = "Kvitanco";
+            if(record.dynamodb.NewImage.fromCompany){
+                fromCompany = record.dynamodb.NewImage.fromCompany;
+            }
+            let fromAddress = "東京都品川区北品川1-9-7-1015";
+            if(record.dynamodb.NewImage.fromAddress){
+                fromAddress = record.dynamodb.NewImage.fromAddress;
+            }
+            let fromPhone = "050-5273-5810";
+            if(record.dynamodb.NewImage.fromPhone){
+                fromPhone = record.dynamodb.NewImage.fromPhone;
+            }
+            
             let from = {
-                company: event.fromCompany,
-                address: event.fromAddress,
-                tel: event.fromPhone
+                company: fromCompany,
+                address: fromAddress,
+                tel: fromPhone
             }
             console.log(company)
+            if(!company){ company = ""; }
             let border_length = company.length * 20;
             if(border_length < atena.length * 20){
                 border_length = atena.length * 20;
@@ -117,25 +185,18 @@ exports.handler = (event, context, callback) => {
             //Finalize PDF file
             doc.end();
         
-            callback(null,doc,filename, fileDir);
-        },
-        function uploadPDF(generated_pdf, filename, fileDir, callback){
-            
-            fs.readFileSync(fileDir,{}, function(err, data){
-                var params = {
-                    Body: data, 
-                    Bucket: "kvitanco.invoice", 
-                    Key: filename, 
-                    ServerSideEncryption: "AES256", 
-                    StorageClass: "STANDARD_IA"
-                };
-                console.log(params);
-                s3.putObject(params, function(err, data) {
-                    if (err) {console.log(err, err.stack); throw err;}// an error occurred
-                    else     {console.log(data); return params;   }        // successful response
-                });
-            })
+            uploadPDF(filename, fileDir);
         }
-        //最後の通知の部分はs3のアップロードをトリガーにして実行するようにする
-    ]);
+    //
+    event.Records.forEach((record) => {
+        console.log('Stream record: ', JSON.stringify(record, null, 2));
+        
+        if (record.eventName == 'INSERT') {
+ //           async.waterfall([
+                createPDFDoc(event, record);
+//            ]);
+        }
+    });
+    callback(null, `Successfully processed ${event.Records.length} records.`);
+    
 }
