@@ -47,12 +47,12 @@ exports.handler = (event, context, callback) => {
         })
     }
 
-    function uploadPDF(filename, fileDir){
+    function uploadPDF(filename, fileDir, record){
                     
         fs.readFileSync(fileDir,{}, function(err, data){
             var params = {
                 Body: data, 
-                Bucket: "kvitanco.invoice", 
+                Bucket: "kvitanco.invoice.data", 
                 Key: filename, 
                 ServerSideEncryption: "AES256", 
                 StorageClass: "STANDARD_IA"
@@ -185,7 +185,25 @@ exports.handler = (event, context, callback) => {
             //Finalize PDF file
             doc.end();
         
-            uploadPDF(filename, fileDir);
+            console.log("finish make invoice");
+            //uploadPDF(filename, fileDir, record);
+            fs.readFileSync(fileDir,{}, function(err, data){
+                var params = {
+                    Body: data, 
+                    Bucket: "kvitanco.invoice.data", 
+                    Key: filename, 
+                    ServerSideEncryption: "AES256", 
+                    StorageClass: "STANDARD_IA"
+                };
+                console.log(params);
+                s3.putObject(params, function(err, data) {
+                    if (err) {console.log(err, err.stack); throw err;}// an error occurred
+                    else     {
+                        console.log(data);
+                        snssend(filename, record.dynamodb.Keys.id, record.dynamodb.NewImage.phone);
+                    }        // successful response
+                });
+            })
         }
     //
     event.Records.forEach((record) => {
